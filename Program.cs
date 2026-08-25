@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using AIstudentskillexchange.Data;
 using AIstudentskillexchange.Models;
+using AIstudentskillexchange.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,6 +22,9 @@ builder.Services.AddDefaultIdentity<ApplicationUser>(options => {
     options.Password.RequiredLength = 6;
 })
 .AddEntityFrameworkStores<ApplicationDbContext>();
+
+// AI Recommendation Module (peer recommendations + AI skill analysis)
+builder.Services.AddAiRecommendationModule(builder.Configuration);
 
 // 3. Add MVC Controller and View support
 builder.Services.AddControllersWithViews();

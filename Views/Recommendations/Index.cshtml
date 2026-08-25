@@ -1,0 +1,212 @@
+@using AIstudentskillexchange.Models.ViewModels
+@model RecommendationsViewModel
+@{
+    ViewData["Title"] = "Recommended Peers";
+}
+
+<div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+        <h1 class="h3 mb-1">AI Recommended Peers</h1>
+        <p class="text-muted mb-0">
+            Matched from your skill descriptions, related skills, peer ratings and exchange potential.
+        </p>
+    </div>
+    <span class="badge @(Model.AnalysisFromLlm ? "bg-success" : "bg-secondary") align-self-center">
+        @(Model.AnalysisFromLlm ? "AI analysis" : "Offline analysis")
+    </span>
+</div>
+
+@if (!Model.AnalysisFromLlm && !string.IsNullOrWhiteSpace(Model.AnalysisNotice) && !Model.WishlistIsEmpty)
+{
+    <div class="alert alert-secondary py-2 small">
+        <strong>Note:</strong> @Model.AnalysisNotice
+        Matching still works, but related-skill detection is basic until the AI service is available.
+    </div>
+}
+
+@if (Model.WishlistIsEmpty)
+{
+    <div class="alert alert-info">
+        <strong>Add a learning goal first.</strong>
+        You have not listed any skills you want to learn yet. Add at least one, with a short
+        description of what you are after, and we will match you with peers who can teach it.
+    </div>
+}
+else
+{
+    <form method="get" class="row g-2 align-items-end mb-4">
+        <div class="col-auto">
+            <label class="form-label mb-1" for="skillId">Filter by learning goal</label>
+            <select class="form-select" id="skillId" name="skillId" onchange="this.form.submit()">
+                <option value="">All my learning goals</option>
+                @foreach (var skill in Model.LearnerWishlist)
+                {
+                    if (Model.FilterSkillId == skill.Id)
+                    {
+                        <option value="@skill.Id" selected>@skill.Name</option>
+                    }
+                    else
+                    {
+                        <option value="@skill.Id">@skill.Name</option>
+                    }
+                }
+            </select>
+        </div>
+        @if (Model.Keywords.Any())
+        {
+            <div class="col d-none d-md-block">
+                <div class="small text-muted mb-1">Topics detected in your notes</div>
+                <div>
+                    @foreach (var keyword in Model.Keywords)
+                    {
+                        <span class="badge rounded-pill bg-light text-dark border me-1">@keyword</span>
+                    }
+                </div>
+            </div>
+        }
+    </form>
+
+    @if (!Model.Recommendations.Any())
+    {
+        <div class="alert alert-warning">
+            No peer mentors match this goal yet. Try clearing the filter, adding a fuller
+            description to your learning goal, or check back once more students join.
+        </div>
+    }
+    else
+    {
+        <div class="row row-cols-1 row-cols-lg-2 g-3">
+            @foreach (var rec in Model.Recommendations)
+            {
+                <div class="col">
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h5 class="card-title mb-1">@rec.FullName</h5>
+                                    @if (!string.IsNullOrWhiteSpace(rec.Bio))
+                                    {
+                                        <p class="text-muted small mb-2">@rec.Bio</p>
+                                    }
+                                </div>
+                                <span class="badge bg-primary fs-6">@rec.MatchScore.ToString("0.#")% match</span>
+                            </div>
+
+                            @if (!string.IsNullOrWhiteSpace(rec.AiExplanation))
+                            {
+                                <p class="fst-italic small border-start border-3 border-primary ps-2 mb-2">
+                                    @rec.AiExplanation
+                                </p>
+                            }
+
+                            <div class="mb-2">
+                                @foreach (var skill in rec.DirectMatches)
+                                {
+                                    <span class="badge bg-light text-dark border me-1 mb-1">
+                                        @skill.SkillName &middot; @skill.MentorLevel
+                                    </span>
+                                }
+                                @foreach (var skill in rec.RelatedMatches)
+                                {
+                                    <span class="badge bg-light text-primary border border-primary me-1 mb-1"
+                                          title="@skill.RelationReason">
+                                        @skill.SkillName &middot; related
+                                    </span>
+                                }
+                                @if (rec.IsMutualExchange)
+                                {
+                                    <span class="badge bg-success me-1 mb-1">Mutual exchange</span>
+                                }
+                                @if (rec.HasOpenRequest)
+                                {
+                                    <span class="badge bg-secondary me-1 mb-1">Request already sent</span>
+                                }
+                            </div>
+
+                            <ul class="small text-muted mb-3 ps-3">
+                                @foreach (var reason in rec.Reasons)
+                                {
+                                    <li>@reason</li>
+                                }
+                            </ul>
+
+                            <details class="small mb-3">
+                                <summary class="text-muted">Score breakdown</summary>
+                                <div class="mt-2">
+                                    @{
+                                        var parts = new (string Label, double Value)[]
+                                        {
+                                            ("Skill match", rec.Breakdown.SkillMatch),
+                                            ("Related skills", rec.Breakdown.RelatedSkillMatch),
+                                            ("Proficiency gap", rec.Breakdown.Proficiency),
+                                            ("Reciprocity", rec.Breakdown.Reciprocity),
+                                            ("Rating", rec.Breakdown.Rating),
+                                            ("Experience", rec.Breakdown.Experience)
+                                        };
+                                    }
+                                    @foreach (var part in parts)
+                                    {
+                                        var percent = (part.Value * 100).ToString("0");
+                                        <div class="d-flex align-items-center mb-1">
+                                            <span class="me-2" style="width: 120px;">@part.Label</span>
+                                            <div class="progress flex-grow-1" style="height: 6px;">
+                                                <div class="progress-bar" role="progressbar"
+                                                     style="width: @percent%;"
+                                                     aria-valuenow="@percent"
+                                                     aria-valuemin="0" aria-valuemax="100"></div>
+                                            </div>
+                                            <span class="ms-2 text-muted">@percent</span>
+                                        </div>
+                                    }
+                                </div>
+                            </details>
+
+                            <button type="button" class="btn btn-outline-primary btn-sm" disabled>
+                                Send learning request
+                            </button>
+                            <span class="small text-muted ms-1">(request module pending)</span>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+}
+
+@if (Model.LearningPath.Any())
+{
+    <hr class="my-4" />
+    <h2 class="h5 mb-3">Suggested learning path</h2>
+    <ol class="list-group list-group-numbered mb-0">
+        @foreach (var step in Model.LearningPath)
+        {
+            <li class="list-group-item">
+                <div class="fw-semibold">@step.Title</div>
+                @if (!string.IsNullOrWhiteSpace(step.Detail))
+                {
+                    <div class="small text-muted">@step.Detail</div>
+                }
+            </li>
+        }
+    </ol>
+}
+
+@if (Model.SuggestedSkills.Any())
+{
+    <hr class="my-4" />
+    <h2 class="h5 mb-3">Skills you might want to add</h2>
+    <div class="row row-cols-1 row-cols-md-3 g-3">
+        @foreach (var skill in Model.SuggestedSkills)
+        {
+            <div class="col">
+                <div class="card h-100 border-0 bg-light">
+                    <div class="card-body py-3">
+                        <h6 class="mb-1">@skill.SkillName</h6>
+                        <div class="text-muted small mb-1">@skill.Category</div>
+                        <div class="small">@skill.Reason</div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
