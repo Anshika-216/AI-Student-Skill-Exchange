@@ -26,6 +26,9 @@ builder.Services.AddDefaultIdentity<ApplicationUser>(options => {
 builder.Services.AddControllersWithViews();
 builder.Services.AddRazorPages(); 
 
+// Peer Discovery and Skill Matching Module (student search + skill matching)
+builder.Services.AddPeerDiscoveryModule(builder.Configuration);
+
 var app = builder.Build();
 
 // 4. Configure the HTTP request pipeline (Middleware)
