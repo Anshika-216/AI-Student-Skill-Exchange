@@ -1,0 +1,99 @@
+@using AIstudentskillexchange.Models.ViewModels.PeerSearch
+@model PeerResultViewModel
+@{
+    ViewData["Title"] = Model.FullName;
+}
+
+<div class="mb-3">
+    <a asp-action="Index" class="small text-decoration-none">&larr; Back to search</a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-3">
+            <div>
+                <h1 class="h3 mb-1">@Model.FullName</h1>
+                @if (!string.IsNullOrWhiteSpace(Model.Bio))
+                {
+                    <p class="text-muted mb-0">@Model.Bio</p>
+                }
+            </div>
+            <div class="text-end">
+                <span class="badge @Model.MatchBadgeCss fs-6">@Model.MatchLabel</span>
+                @if (Model.MatchStrength > 0)
+                {
+                    <div class="small text-muted mt-1">@Model.MatchStrength% overlap with you</div>
+                }
+            </div>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-md-6">
+                <h2 class="h6">Can teach</h2>
+                @{
+                    var teaches = Model.TeachesWhatIWant.Concat(Model.OtherSkills).ToList();
+                }
+                @if (teaches.Any())
+                {
+                    <ul class="list-group list-group-flush">
+                        @foreach (var skill in teaches)
+                        {
+                            <li class="list-group-item px-0 d-flex justify-content-between align-items-center">
+                                <span>
+                                    @skill.SkillName
+                                    <span class="text-muted small">@skill.Category</span>
+                                </span>
+                                <span>
+                                    <span class="badge bg-light text-dark border">@skill.Level</span>
+                                    @if (skill.IsMatch)
+                                    {
+                                        <span class="badge bg-success">on your list</span>
+                                    }
+                                </span>
+                            </li>
+                        }
+                    </ul>
+                }
+                else
+                {
+                    <p class="text-muted small mb-0">No teachable skills listed.</p>
+                }
+            </div>
+
+            <div class="col-md-6">
+                <h2 class="h6">Wants to learn</h2>
+                @{
+                    var wants = Model.WantsWhatICanTeach.Concat(Model.SharedGoals).ToList();
+                }
+                @if (wants.Any())
+                {
+                    <ul class="list-group list-group-flush">
+                        @foreach (var skill in wants)
+                        {
+                            <li class="list-group-item px-0 d-flex justify-content-between align-items-center">
+                                <span>
+                                    @skill.SkillName
+                                    <span class="text-muted small">@skill.Category</span>
+                                </span>
+                                @if (skill.IsMatch)
+                                {
+                                    <span class="badge bg-primary">you can help</span>
+                                }
+                            </li>
+                        }
+                    </ul>
+                }
+                else
+                {
+                    <p class="text-muted small mb-0">No learning goals listed.</p>
+                }
+            </div>
+        </div>
+
+        <hr />
+        <button type="button" class="btn btn-outline-primary btn-sm" disabled>
+            Send learning request
+        </button>
+        <span class="small text-muted ms-1">(request module pending)</span>
+    </div>
+</div>
