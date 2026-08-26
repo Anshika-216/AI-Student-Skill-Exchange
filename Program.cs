@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using AIstudentskillexchange.Data;
@@ -26,8 +27,13 @@ builder.Services.AddDefaultIdentity<ApplicationUser>(options => {
 // AI Recommendation Module (peer recommendations + AI skill analysis)
 builder.Services.AddAiRecommendationModule(builder.Configuration);
 
-// 3. Add MVC Controller and View support
-builder.Services.AddControllersWithViews();
+// 3. Add MVC Controller and View support.
+//    Enums are exchanged as their names ("ToLearn", "Pending") rather than as
+//    raw integers, so the API is readable and callers cannot silently depend on
+//    the declaration order of an enum.
+builder.Services.AddControllersWithViews()
+    .AddJsonOptions(options =>
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddRazorPages(); 
 
 // Peer Discovery and Skill Matching Module (student search + skill matching)
@@ -35,7 +41,16 @@ builder.Services.AddPeerDiscoveryModule(builder.Configuration);
 
 var app = builder.Build();
 
-// 4. Configure the HTTP request pipeline (Middleware)
+// 4. Apply any pending migrations and seed the shared skill catalogue, so a
+//    fresh clone has a working database on first run.
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    await context.Database.MigrateAsync();
+    await SkillCatalogueSeeder.SeedAsync(context);
+}
+
+// 5. Configure the HTTP request pipeline (Middleware)
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
@@ -50,7 +65,7 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// 5. Define standard MVC routing paths
+// 6. Define standard MVC routing paths
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");

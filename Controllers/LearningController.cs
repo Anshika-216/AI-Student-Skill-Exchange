@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using AIstudentskillexchange.Data;
 using AIstudentskillexchange.DTOs;
@@ -6,137 +8,316 @@ using AIstudentskillexchange.Models;
 
 namespace AIstudentskillexchange.Controllers
 {
-    // Handles the full Learning Session & Feedback module:
-    // requests -> sessions -> feedback
+    /// <summary>
+    /// Learning Session and Feedback module: requests -> sessions -> feedback.
+    ///
+    /// Security model: the caller must be signed in, the acting user always comes
+    /// from the auth cookie, and every endpoint checks that the caller is actually
+    /// a party to the request or session it touches.
+    ///
+    /// Convention (shared with the recommendation module): the Sender is the
+    /// learner asking for help, the Receiver is the mentor who will teach.
+    /// </summary>
+    [Authorize]
     [ApiController]
     [Route("api/[controller]")]
     public class LearningController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
-        public LearningController(ApplicationDbContext context) => _context = context;
+        private readonly UserManager<ApplicationUser> _userManager;
+
+        public LearningController(ApplicationDbContext context, UserManager<ApplicationUser> userManager)
+        {
+            _context = context;
+            _userManager = userManager;
+        }
+
+        private static PersonDto ToPerson(string id, ApplicationUser? user) => new()
+        {
+            Id = id,
+            FullName = user?.FullName ?? string.Empty
+        };
+
+        private static LearningRequestDto ToDto(LearningRequest r) => new()
+        {
+            Id = r.Id,
+            Sender = ToPerson(r.SenderId, r.Sender),
+            Receiver = ToPerson(r.ReceiverId, r.Receiver),
+            SkillId = r.SkillId,
+            SkillName = r.Skill?.Name ?? string.Empty,
+            Status = r.Status,
+            CreatedAt = r.CreatedAt,
+            SessionId = r.Session?.Id
+        };
+
+        private static LearningSessionDto ToDto(LearningSession s) => new()
+        {
+            Id = s.Id,
+            RequestId = s.RequestId,
+            ScheduledTime = s.ScheduledTime,
+            Status = s.Status,
+            MeetingLink = s.MeetingLink,
+            SkillName = s.Request?.Skill?.Name ?? string.Empty,
+            Learner = ToPerson(s.Request?.SenderId ?? string.Empty, s.Request?.Sender),
+            Mentor = ToPerson(s.Request?.ReceiverId ?? string.Empty, s.Request?.Receiver)
+        };
+
+        private static FeedbackDto ToDto(Feedback f) => new()
+        {
+            Id = f.Id,
+            SessionId = f.SessionId,
+            Reviewer = ToPerson(f.ReviewerId, f.Reviewer),
+            Rating = f.Rating,
+            Comments = f.Comments,
+            CreatedAt = f.CreatedAt
+        };
 
         // ---------- Learning Requests ----------
 
-        [HttpGet("requests/user/{userId}")]
-        public async Task<IActionResult> GetRequestsByUser(string userId)
+        // GET: api/Learning/requests
+        // Everything the signed-in user has sent or received. The old route took
+        // a userId from the URL, which let anyone read another student inbox.
+        [HttpGet("requests")]
+        public async Task<IActionResult> GetMyRequests(CancellationToken cancellationToken)
         {
+            var userId = _userManager.GetUserId(User)!;
+
             var requests = await _context.LearningRequests
-                .Include(r => r.Sender).Include(r => r.Receiver).Include(r => r.Skill)
+                .AsNoTracking()
+                .Include(r => r.Sender).Include(r => r.Receiver)
+                .Include(r => r.Skill).Include(r => r.Session)
                 .Where(r => r.SenderId == userId || r.ReceiverId == userId)
                 .OrderByDescending(r => r.CreatedAt)
-                .ToListAsync();
-            return Ok(requests);
+                .ToListAsync(cancellationToken);
+
+            return Ok(requests.Select(ToDto));
         }
 
+        // POST: api/Learning/requests
         [HttpPost("requests")]
-        public async Task<IActionResult> CreateRequest(CreateLearningRequestDto dto)
+        public async Task<IActionResult> CreateRequest(
+            CreateLearningRequestDto dto, CancellationToken cancellationToken)
         {
-            if (dto.SenderId == dto.ReceiverId)
+            var senderId = _userManager.GetUserId(User)!;
+
+            if (senderId == dto.ReceiverId)
                 return BadRequest(new { message = "Cannot send a request to yourself." });
 
-            if (await _context.Skills.FindAsync(dto.SkillId) == null)
+            var receiver = await _context.Users
+                .FirstOrDefaultAsync(u => u.Id == dto.ReceiverId, cancellationToken);
+            if (receiver == null)
+                return NotFound(new { message = "Receiver not found." });
+
+            var skill = await _context.Skills.FindAsync([dto.SkillId], cancellationToken);
+            if (skill == null)
                 return NotFound(new { message = "Skill not found." });
+
+            // The recommendation module surfaces HasOpenRequest from exactly this
+            // condition, so keep a single live request per mentor/skill pair.
+            var duplicate = await _context.LearningRequests.AnyAsync(
+                r => r.SenderId == senderId
+                     && r.ReceiverId == dto.ReceiverId
+                     && r.SkillId == dto.SkillId
+                     && (r.Status == RequestStatus.Pending || r.Status == RequestStatus.Accepted),
+                cancellationToken);
+
+            if (duplicate)
+                return Conflict(new { message = "You already have an open request to this peer for that skill." });
 
             var request = new LearningRequest
             {
-                SenderId = dto.SenderId,
+                SenderId = senderId,
                 ReceiverId = dto.ReceiverId,
                 SkillId = dto.SkillId,
                 Status = RequestStatus.Pending
             };
+
             _context.LearningRequests.Add(request);
-            await _context.SaveChangesAsync();
-            return Ok(request);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            request.Skill = skill;
+            request.Receiver = receiver;
+            request.Sender = await _userManager.GetUserAsync(User);
+
+            return Ok(ToDto(request));
         }
 
+        // PUT: api/Learning/requests/{id}/status
         [HttpPut("requests/{id}/status")]
-        public async Task<IActionResult> UpdateRequestStatus(int id, UpdateRequestStatusDto dto)
+        public async Task<IActionResult> UpdateRequestStatus(
+            int id, UpdateRequestStatusDto dto, CancellationToken cancellationToken)
         {
-            var request = await _context.LearningRequests.Include(r => r.Session)
-                .FirstOrDefaultAsync(r => r.Id == id);
-            if (request == null) return NotFound(new { message = "Request not found." });
+            var userId = _userManager.GetUserId(User)!;
+
+            var request = await _context.LearningRequests
+                .Include(r => r.Sender).Include(r => r.Receiver)
+                .Include(r => r.Skill).Include(r => r.Session)
+                .FirstOrDefaultAsync(r => r.Id == id, cancellationToken);
+
+            if (request == null)
+                return NotFound(new { message = "Request not found." });
+
+            // Only the mentor being asked may accept or reject.
+            if (request.ReceiverId != userId)
+                return Forbid();
+
             if (request.Status != RequestStatus.Pending)
                 return BadRequest(new { message = "Only pending requests can be updated." });
+
+            if (dto.Status == RequestStatus.Pending)
+                return BadRequest(new { message = "A request can only be moved to Accepted or Rejected." });
 
             request.Status = dto.Status;
 
             if (dto.Status == RequestStatus.Accepted && request.Session == null)
             {
-                _context.LearningSessions.Add(new LearningSession
+                var session = new LearningSession
                 {
                     RequestId = request.Id,
                     ScheduledTime = DateTime.UtcNow.AddDays(1),
                     Status = SessionStatus.Scheduled
-                });
+                };
+                _context.LearningSessions.Add(session);
+                request.Session = session;
             }
 
-            await _context.SaveChangesAsync();
-            return Ok(request);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            return Ok(ToDto(request));
         }
 
         // ---------- Learning Sessions ----------
 
-        [HttpGet("sessions/user/{userId}")]
-        public async Task<IActionResult> GetSessionsByUser(string userId)
+        // GET: api/Learning/sessions
+        [HttpGet("sessions")]
+        public async Task<IActionResult> GetMySessions(CancellationToken cancellationToken)
         {
+            var userId = _userManager.GetUserId(User)!;
+
             var sessions = await _context.LearningSessions
+                .AsNoTracking()
                 .Include(s => s.Request).ThenInclude(r => r!.Sender)
                 .Include(s => s.Request).ThenInclude(r => r!.Receiver)
+                .Include(s => s.Request).ThenInclude(r => r!.Skill)
                 .Where(s => s.Request!.SenderId == userId || s.Request!.ReceiverId == userId)
                 .OrderBy(s => s.ScheduledTime)
-                .ToListAsync();
-            return Ok(sessions);
+                .ToListAsync(cancellationToken);
+
+            return Ok(sessions.Select(ToDto));
         }
 
+        // PUT: api/Learning/sessions/{id}
         [HttpPut("sessions/{id}")]
-        public async Task<IActionResult> UpdateSession(int id, UpdateSessionDto dto)
+        public async Task<IActionResult> UpdateSession(
+            int id, UpdateSessionDto dto, CancellationToken cancellationToken)
         {
-            var session = await _context.LearningSessions.FindAsync(id);
-            if (session == null) return NotFound(new { message = "Session not found." });
+            var userId = _userManager.GetUserId(User)!;
 
-            if (dto.ScheduledTime.HasValue) session.ScheduledTime = dto.ScheduledTime.Value;
+            var session = await _context.LearningSessions
+                .Include(s => s.Request).ThenInclude(r => r!.Sender)
+                .Include(s => s.Request).ThenInclude(r => r!.Receiver)
+                .Include(s => s.Request).ThenInclude(r => r!.Skill)
+                .FirstOrDefaultAsync(s => s.Id == id, cancellationToken);
+
+            if (session == null)
+                return NotFound(new { message = "Session not found." });
+
+            if (session.Request == null
+                || (session.Request.SenderId != userId && session.Request.ReceiverId != userId))
+                return Forbid();
+
+            if (session.Status != SessionStatus.Scheduled)
+                return BadRequest(new { message = "Only a scheduled session can be changed." });
+
+            if (dto.ScheduledTime.HasValue)
+            {
+                if (dto.ScheduledTime.Value < DateTime.UtcNow)
+                    return BadRequest(new { message = "A session cannot be scheduled in the past." });
+
+                session.ScheduledTime = dto.ScheduledTime.Value;
+            }
+
             if (dto.Status.HasValue) session.Status = dto.Status.Value;
             if (dto.MeetingLink != null) session.MeetingLink = dto.MeetingLink;
 
-            await _context.SaveChangesAsync();
-            return Ok(session);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            return Ok(ToDto(session));
         }
 
         // ---------- Feedback ----------
 
+        // GET: api/Learning/feedback/session/{sessionId}
         [HttpGet("feedback/session/{sessionId}")]
-        public async Task<IActionResult> GetFeedbackForSession(int sessionId)
+        public async Task<IActionResult> GetFeedbackForSession(
+            int sessionId, CancellationToken cancellationToken)
         {
-            var feedback = await _context.Feedbacks.Include(f => f.Reviewer)
-                .Where(f => f.SessionId == sessionId).ToListAsync();
-            return Ok(feedback);
+            var userId = _userManager.GetUserId(User)!;
+
+            var session = await _context.LearningSessions
+                .AsNoTracking()
+                .Include(s => s.Request)
+                .FirstOrDefaultAsync(s => s.Id == sessionId, cancellationToken);
+
+            if (session == null)
+                return NotFound(new { message = "Session not found." });
+
+            if (session.Request == null
+                || (session.Request.SenderId != userId && session.Request.ReceiverId != userId))
+                return Forbid();
+
+            var feedback = await _context.Feedbacks
+                .AsNoTracking()
+                .Include(f => f.Reviewer)
+                .Where(f => f.SessionId == sessionId)
+                .ToListAsync(cancellationToken);
+
+            return Ok(feedback.Select(ToDto));
         }
 
+        // POST: api/Learning/feedback
         [HttpPost("feedback")]
-        public async Task<IActionResult> AddFeedback(CreateFeedbackDto dto)
+        public async Task<IActionResult> AddFeedback(
+            CreateFeedbackDto dto, CancellationToken cancellationToken)
         {
-            var session = await _context.LearningSessions.Include(s => s.Request)
-                .FirstOrDefaultAsync(s => s.Id == dto.SessionId);
-            if (session == null) return NotFound(new { message = "Session not found." });
+            var reviewerId = _userManager.GetUserId(User)!;
 
-            var isParticipant = session.Request != null &&
-                (session.Request.SenderId == dto.ReviewerId || session.Request.ReceiverId == dto.ReviewerId);
+            var session = await _context.LearningSessions
+                .Include(s => s.Request)
+                .FirstOrDefaultAsync(s => s.Id == dto.SessionId, cancellationToken);
+
+            if (session == null)
+                return NotFound(new { message = "Session not found." });
+
+            var isParticipant = session.Request != null
+                && (session.Request.SenderId == reviewerId || session.Request.ReceiverId == reviewerId);
+
             if (!isParticipant)
-                return BadRequest(new { message = "Only session participants can leave feedback." });
+                return Forbid();
 
-            if (await _context.Feedbacks.AnyAsync(f => f.SessionId == dto.SessionId && f.ReviewerId == dto.ReviewerId))
-                return BadRequest(new { message = "You already reviewed this session." });
+            // Ratings feed the reputation signal in the recommendation score, so
+            // only a session that actually happened may be rated.
+            if (session.Status != SessionStatus.Completed)
+                return BadRequest(new { message = "Feedback can only be left on a completed session." });
+
+            if (await _context.Feedbacks.AnyAsync(
+                    f => f.SessionId == dto.SessionId && f.ReviewerId == reviewerId, cancellationToken))
+                return Conflict(new { message = "You already reviewed this session." });
 
             var feedback = new Feedback
             {
                 SessionId = dto.SessionId,
-                ReviewerId = dto.ReviewerId,
+                ReviewerId = reviewerId,
                 Rating = dto.Rating,
                 Comments = dto.Comments
             };
+
             _context.Feedbacks.Add(feedback);
-            await _context.SaveChangesAsync();
-            return Ok(feedback);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            feedback.Reviewer = await _userManager.GetUserAsync(User);
+
+            return Ok(ToDto(feedback));
         }
     }
 }
