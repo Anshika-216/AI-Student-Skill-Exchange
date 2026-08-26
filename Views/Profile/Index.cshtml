@@ -1,0 +1,211 @@
+@{
+    ViewData["Title"] = "My Skills";
+}
+
+<div class="page-head">
+    <h1>My Profile &amp; Skills</h1>
+    <p>Tell others who you are, then list what you can teach and what you want to learn. Matching runs off this list.</p>
+</div>
+
+<div class="row g-3">
+    <div class="col-12 col-lg-5">
+        <div class="panel mb-3">
+            <h2 class="h6 mb-3">About you</h2>
+            <form id="profile-form">
+                <div class="mb-2">
+                    <label class="form-label" for="fullName">Display name</label>
+                    <input class="form-control" id="fullName" maxlength="100" placeholder="e.g. Pranav Dubey" required />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="bio">Short bio</label>
+                    <textarea class="form-control" id="bio" rows="3" placeholder="What are you studying? What do you enjoy teaching?"></textarea>
+                </div>
+                <button class="btn btn-primary btn-sm" type="submit">Save profile</button>
+                <span class="small text-muted ms-2" id="profile-email"></span>
+            </form>
+        </div>
+
+        <div class="panel">
+            <h2 class="h6 mb-3">Add a skill</h2>
+            <form id="add-form">
+                <div class="mb-2">
+                    <label class="form-label" for="skillId">Skill</label>
+                    <select class="form-select" id="skillId" required>
+                        <option value="">Loading…</option>
+                    </select>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label" for="type">I want to</label>
+                        <select class="form-select" id="type">
+                            <option value="ToTeach">Teach it</option>
+                            <option value="ToLearn">Learn it</option>
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label" for="level">Level</label>
+                        <select class="form-select" id="level">
+                            <option value="Beginner">Beginner</option>
+                            <option value="Intermediate" selected>Intermediate</option>
+                            <option value="Expert">Expert</option>
+                        </select>
+                    </div>
+                </div>
+                <button class="btn btn-primary btn-sm" type="submit">Add skill</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-7">
+        <div class="panel mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h2 class="h6 mb-0">Skills I can teach</h2>
+                <span class="badge bg-success-subtle text-success-emphasis border border-success" id="teach-count">0</span>
+            </div>
+            <div id="teach-list"><div class="skeleton mb-2"></div><div class="skeleton w-75"></div></div>
+        </div>
+
+        <div class="panel">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h2 class="h6 mb-0">Skills I want to learn</h2>
+                <span class="badge bg-info-subtle text-info-emphasis border border-info" id="learn-count">0</span>
+            </div>
+            <div id="learn-list"><div class="skeleton mb-2"></div><div class="skeleton w-50"></div></div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+(function () {
+    'use strict';
+
+    var mySkills = [];
+
+    function renderList(container, items, cssClass, emptyText) {
+        if (!items.length) {
+            container.innerHTML = '<div class="empty"><span class="empty-icon">+</span>' +
+                escapeHtml(emptyText) + '</div>';
+            return;
+        }
+        container.innerHTML = items.map(function (s) {
+            return '<span class="chip ' + cssClass + '">' +
+                escapeHtml(s.skillName) +
+                ' <span class="text-muted">· ' + escapeHtml(s.level) + '</span>' +
+                ' <button class="chip-x" data-id="' + s.id + '" title="Remove" aria-label="Remove ' +
+                escapeHtml(s.skillName) + '">&times;</button></span>';
+        }).join('');
+    }
+
+    function render() {
+        var teach = mySkills.filter(function (s) { return s.type === 'ToTeach'; });
+        var learn = mySkills.filter(function (s) { return s.type === 'ToLearn'; });
+
+        renderList(document.getElementById('teach-list'), teach, 'chip-teach',
+            'Nothing yet. Add a skill you could help someone with.');
+        renderList(document.getElementById('learn-list'), learn, 'chip-learn',
+            'Nothing yet. Add a skill you want to pick up.');
+
+        document.getElementById('teach-count').textContent = teach.length;
+        document.getElementById('learn-count').textContent = learn.length;
+    }
+
+    async function loadSkills() {
+        try {
+            mySkills = await api('/api/Skills') || [];
+            render();
+        } catch (e) {
+            toast(e.message, 'err');
+        }
+    }
+
+    async function loadCatalogue() {
+        try {
+            var catalogue = await api('/api/Skills/catalogue') || [];
+            var groups = {};
+            catalogue.forEach(function (s) {
+                (groups[s.category] = groups[s.category] || []).push(s);
+            });
+
+            var html = '<option value="">Choose a skill…</option>';
+            Object.keys(groups).sort().forEach(function (category) {
+                html += '<optgroup label="' + escapeHtml(category) + '">';
+                groups[category].forEach(function (s) {
+                    html += '<option value="' + s.id + '">' + escapeHtml(s.name) + '</option>';
+                });
+                html += '</optgroup>';
+            });
+            document.getElementById('skillId').innerHTML = html;
+        } catch (e) {
+            toast(e.message, 'err');
+        }
+    }
+
+    async function loadProfile() {
+        try {
+            var profile = await api('/api/profile');
+            document.getElementById('fullName').value = profile.fullName || '';
+            document.getElementById('bio').value = profile.bio || '';
+            document.getElementById('profile-email').textContent = profile.email || '';
+        } catch (e) {
+            toast(e.message, 'err');
+        }
+    }
+
+    document.getElementById('profile-form').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        try {
+            await api('/api/profile', {
+                method: 'PUT',
+                body: {
+                    fullName: document.getElementById('fullName').value,
+                    bio: document.getElementById('bio').value
+                }
+            });
+            toast('Profile saved', 'ok');
+        } catch (err) {
+            toast(err.message, 'err');
+        }
+    });
+
+    document.getElementById('add-form').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        var skillId = document.getElementById('skillId').value;
+        if (!skillId) { toast('Pick a skill first', 'err'); return; }
+
+        try {
+            await api('/api/Skills', {
+                method: 'POST',
+                body: {
+                    skillId: parseInt(skillId, 10),
+                    type: document.getElementById('type').value,
+                    level: document.getElementById('level').value
+                }
+            });
+            toast('Skill added', 'ok');
+            document.getElementById('skillId').value = '';
+            await loadSkills();
+        } catch (err) {
+            toast(err.message, 'err');
+        }
+    });
+
+    document.addEventListener('click', async function (e) {
+        var button = e.target.closest('.chip-x');
+        if (!button) { return; }
+
+        try {
+            await api('/api/Skills/' + button.dataset.id, { method: 'DELETE' });
+            toast('Skill removed', 'ok');
+            await loadSkills();
+        } catch (err) {
+            toast(err.message, 'err');
+        }
+    });
+
+    loadProfile();
+    loadCatalogue();
+    loadSkills();
+})();
+</script>
+}

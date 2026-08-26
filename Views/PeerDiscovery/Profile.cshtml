@@ -91,9 +91,52 @@
         </div>
 
         <hr />
-        <button type="button" class="btn btn-outline-primary btn-sm" disabled>
-            Send learning request
-        </button>
-        <span class="small text-muted ms-1">(request module pending)</span>
+        @if (Model.TeachesWhatIWant.Any())
+        {
+            <h2 class="h6">Send a learning request</h2>
+            <div class="d-flex flex-wrap gap-1">
+                @foreach (var skill in Model.TeachesWhatIWant)
+                {
+                    <button type="button" class="btn btn-sm btn-outline-primary"
+                            data-peer="@Model.StudentId" data-skill="@skill.SkillId">
+                        Ask about @skill.SkillName
+                    </button>
+                }
+            </div>
+        }
+        else
+        {
+            <p class="small text-muted mb-0">
+                This student does not teach anything on your learning list yet.
+                Add more goals under <a asp-controller="Profile" asp-action="Index">My Skills</a> to unlock a request.
+            </p>
+        }
     </div>
 </div>
+
+@section Scripts {
+<script>
+document.addEventListener('click', async function (e) {
+    var button = e.target.closest('button[data-peer][data-skill]');
+    if (!button) { return; }
+
+    button.disabled = true;
+    try {
+        await api('/api/Learning/requests', {
+            method: 'POST',
+            body: {
+                receiverId: button.dataset.peer,
+                skillId: parseInt(button.dataset.skill, 10)
+            }
+        });
+        button.textContent = 'Request sent';
+        button.classList.remove('btn-outline-primary');
+        button.classList.add('btn-success');
+        toast('Request sent', 'ok');
+    } catch (err) {
+        button.disabled = false;
+        toast(err.message, 'err');
+    }
+});
+</script>
+}

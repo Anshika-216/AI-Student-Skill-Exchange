@@ -5,14 +5,6 @@ using Microsoft.Extensions.Options;
 
 namespace AIstudentskillexchange.Services.AI
 {
-    /// <summary>
-    /// AI Service implementation backed by the Gemini free tier, with a
-    /// deterministic offline analyser as fallback.
-    ///
-    /// The fallback matters for two requirements: Reliability and Performance
-    /// (section 6). The page must still render if the free-tier quota is spent,
-    /// the network is down, or no API key has been configured yet.
-    /// </summary>
     public class GeminiSkillAnalysisService : ISkillAnalysisService
     {
         private readonly GeminiClient _client;
@@ -31,10 +23,6 @@ namespace AIstudentskillexchange.Services.AI
             _cache = cache;
             _logger = logger;
         }
-
-        // -------------------------------------------------------------------------
-        // Skill analysis
-        // -------------------------------------------------------------------------
 
         public async Task<SkillAnalysisResult> AnalyseAsync(
             SkillAnalysisRequest request,
@@ -135,8 +123,6 @@ namespace AIstudentskillexchange.Services.AI
 
         private SkillAnalysisResult MapLlmResponse(LlmAnalysisResponse response, SkillAnalysisRequest request)
         {
-            // The model is told to stay inside the catalogue, but never trust it:
-            // every id is validated against the catalogue before it is used.
             var validIds = request.Catalog.Select(c => c.SkillId).ToHashSet();
             var names = request.Catalog.ToDictionary(c => c.SkillId, c => c.Name);
             var wantedIds = request.WantsToLearn.Select(w => w.SkillId).ToHashSet();
@@ -154,7 +140,7 @@ namespace AIstudentskillexchange.Services.AI
                     if (!validIds.Contains(match.SkillId) || match.SkillId == group.ForSkillId)
                         continue;
                     if (wantedIds.Contains(match.SkillId))
-                        continue; // already a direct goal, no need to treat as related
+                        continue;
 
                     matches.Add(new RelatedSkill
                     {
@@ -195,23 +181,12 @@ namespace AIstudentskillexchange.Services.AI
                 })
                 .ToList();
 
-            // A reply that survived validation with nothing in it is no better
-            // than no reply, so fall back rather than show an empty analysis.
             if (result.RelatedSkills.Count == 0 && result.LearningPath.Count == 0)
                 return OfflineAnalyse(request, "Gemini returned no usable matches.");
 
             return result;
         }
 
-        // -------------------------------------------------------------------------
-        // Offline fallback analysis
-        // -------------------------------------------------------------------------
-
-        /// <summary>
-        /// Deterministic stand-in for the LLM: matches on shared category and on
-        /// overlapping words between skill names and student descriptions.
-        /// Weaker than the model, but it always answers and costs nothing.
-        /// </summary>
         private static SkillAnalysisResult OfflineAnalyse(SkillAnalysisRequest request, string reason)
         {
             var result = new SkillAnalysisResult { FromLlm = false, FallbackReason = reason };
@@ -309,10 +284,6 @@ namespace AIstudentskillexchange.Services.AI
             return union == 0 ? 0 : (double)intersection / union;
         }
 
-        // -------------------------------------------------------------------------
-        // Match explanations
-        // -------------------------------------------------------------------------
-
         public async Task<Dictionary<string, string>> ExplainMatchesAsync(
             IReadOnlyList<MatchExplanationRequest> matches,
             CancellationToken cancellationToken = default)
@@ -380,10 +351,6 @@ namespace AIstudentskillexchange.Services.AI
             var teaches = string.Join(",", request.CanTeach.OrderBy(t => t.SkillId).Select(t => t.SkillId));
             return $"skill-analysis:{request.LearnerId}:{wants}|{teaches}|{request.Catalog.Count}";
         }
-
-        // -------------------------------------------------------------------------
-        // LLM wire types
-        // -------------------------------------------------------------------------
 
         private class LlmAnalysisResponse
         {

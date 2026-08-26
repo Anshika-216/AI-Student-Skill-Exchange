@@ -1,8 +1,94 @@
-﻿@{
-    ViewData["Title"] = "Home Page";
+@{
+    ViewData["Title"] = "Home";
 }
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
-</div>
+@if (SignInManager.IsSignedIn(User))
+{
+    <div class="page-head">
+        <h1>Welcome back</h1>
+        <p>Pick up where you left off.</p>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-12 col-md-6 col-lg-3">
+            <a class="card h-100 text-decoration-none" asp-controller="Dashboard" asp-action="Index">
+                <div class="card-body">
+                    <h2 class="h6 mb-1">Dashboard</h2>
+                    <p class="small text-muted mb-0">Requests, sessions and feedback.</p>
+                </div>
+            </a>
+        </div>
+        <div class="col-12 col-md-6 col-lg-3">
+            <a class="card h-100 text-decoration-none" asp-controller="PeerDiscovery" asp-action="Index">
+                <div class="card-body">
+                    <h2 class="h6 mb-1">Find Peers</h2>
+                    <p class="small text-muted mb-0">Search students by skill or name.</p>
+                </div>
+            </a>
+        </div>
+        <div class="col-12 col-md-6 col-lg-3">
+            <a class="card h-100 text-decoration-none" asp-controller="Recommendations" asp-action="Index">
+                <div class="card-body">
+                    <h2 class="h6 mb-1">Recommendations</h2>
+                    <p class="small text-muted mb-0">Ranked mentor matches for your goals.</p>
+                </div>
+            </a>
+        </div>
+        <div class="col-12 col-md-6 col-lg-3">
+            <a class="card h-100 text-decoration-none" asp-controller="Profile" asp-action="Index">
+                <div class="card-body">
+                    <h2 class="h6 mb-1">My Skills</h2>
+                    <p class="small text-muted mb-0">Update what you teach and learn.</p>
+                </div>
+            </a>
+        </div>
+    </div>
+}
+else
+{
+    <div class="hero mb-4">
+        <h1>Learn from your peers. Teach what you know.</h1>
+        <p>
+            SkillSwap matches students who want to learn something with students who can teach it,
+            then helps you schedule a session and leave feedback afterwards.
+        </p>
+        <div class="d-flex gap-2 justify-content-center flex-wrap">
+            <a class="btn btn-primary" asp-area="Identity" asp-page="/Account/Register">Get started</a>
+            <a class="btn btn-outline-secondary" asp-area="Identity" asp-page="/Account/Login">Sign in</a>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-12 col-md-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h2 class="h6">1. List your skills</h2>
+                    <p class="small text-muted mb-0">
+                        Say what you can teach and what you want to learn, with a proficiency level for each.
+                    </p>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-md-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h2 class="h6">2. Get matched</h2>
+                    <p class="small text-muted mb-0">
+                        Search directly, or let the recommendation engine rank peers by skill overlap,
+                        two-way exchange potential and reputation.
+                    </p>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-md-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h2 class="h6">3. Meet and review</h2>
+                    <p class="small text-muted mb-0">
+                        Send a request, agree a time, then rate the session so good mentors surface for everyone.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+}

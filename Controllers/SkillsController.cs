@@ -8,13 +8,6 @@ using AIstudentskillexchange.Models;
 
 namespace AIstudentskillexchange.Controllers
 {
-    /// <summary>
-    /// Skill Management API.
-    ///
-    /// Security model: the caller must be signed in, and the owning student is
-    /// always taken from the auth cookie - never from the request body. A user
-    /// may only modify their own skills.
-    /// </summary>
     [Authorize]
     [ApiController]
     [Route("api/[controller]")]
@@ -41,8 +34,6 @@ namespace AIstudentskillexchange.Controllers
             Level = s.Level
         };
 
-        // GET: api/Skills/catalogue
-        // The shared skill catalogue, needed to populate any "add a skill" form.
         [HttpGet("catalogue")]
         public async Task<ActionResult<IEnumerable<SkillDto>>> GetCatalogue(CancellationToken cancellationToken)
         {
@@ -55,9 +46,6 @@ namespace AIstudentskillexchange.Controllers
             return Ok(skills);
         }
 
-        // GET: api/Skills
-        // The signed-in student's own skills. Previously this returned every
-        // StudentSkill row in the database, unpaged, to anonymous callers.
         [HttpGet]
         public async Task<ActionResult<IEnumerable<StudentSkillDto>>> GetMySkills(CancellationToken cancellationToken)
         {
@@ -72,10 +60,6 @@ namespace AIstudentskillexchange.Controllers
             return Ok(skills.Select(ToDto));
         }
 
-        // GET: api/Skills/student/{studentId}
-        // Another student's skills. This is public-profile information by design
-        // (the peer discovery module shows the same data), so it stays readable,
-        // but it is limited to signed-in users and exposes only the DTO fields.
         [HttpGet("student/{studentId}")]
         public async Task<ActionResult<IEnumerable<StudentSkillDto>>> GetSkillsByStudent(
             string studentId, CancellationToken cancellationToken)
@@ -89,7 +73,6 @@ namespace AIstudentskillexchange.Controllers
             return Ok(skills.Select(ToDto));
         }
 
-        // GET: api/Skills/{id}
         [HttpGet("{id}")]
         public async Task<ActionResult<StudentSkillDto>> GetSkillById(int id, CancellationToken cancellationToken)
         {
@@ -104,7 +87,6 @@ namespace AIstudentskillexchange.Controllers
             return Ok(ToDto(skill));
         }
 
-        // POST: api/Skills
         [HttpPost]
         public async Task<ActionResult<StudentSkillDto>> AddSkill(
             CreateSkillDto dto, CancellationToken cancellationToken)
@@ -115,8 +97,6 @@ namespace AIstudentskillexchange.Controllers
             if (skill == null)
                 return NotFound(new { message = "Skill not found." });
 
-            // A student listing the same skill twice for the same purpose would
-            // double-count in every match score, so reject it up front.
             var alreadyListed = await _context.StudentSkills.AnyAsync(
                 s => s.StudentId == studentId && s.SkillId == dto.SkillId && s.Type == dto.Type,
                 cancellationToken);
@@ -143,7 +123,6 @@ namespace AIstudentskillexchange.Controllers
                 ToDto(studentSkill));
         }
 
-        // PUT: api/Skills/{id}
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateSkill(
             int id, UpdateSkillDto dto, CancellationToken cancellationToken)
@@ -171,7 +150,6 @@ namespace AIstudentskillexchange.Controllers
             return Ok(ToDto(studentSkill));
         }
 
-        // DELETE: api/Skills/{id}
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteSkill(int id, CancellationToken cancellationToken)
         {

@@ -1,0 +1,280 @@
+@{
+    ViewData["Title"] = "Dashboard";
+}
+
+<div class="page-head">
+    <h1>Dashboard</h1>
+    <p>Your learning requests, scheduled sessions and feedback.</p>
+</div>
+
+<div class="row g-2 mb-4" id="stats">
+    <div class="col-6 col-lg-3"><div class="stat"><div class="stat-value" id="stat-incoming">–</div><div class="stat-label">Awaiting you</div></div></div>
+    <div class="col-6 col-lg-3"><div class="stat"><div class="stat-value" id="stat-sent">–</div><div class="stat-label">Requests sent</div></div></div>
+    <div class="col-6 col-lg-3"><div class="stat"><div class="stat-value" id="stat-upcoming">–</div><div class="stat-label">Upcoming</div></div></div>
+    <div class="col-6 col-lg-3"><div class="stat"><div class="stat-value" id="stat-done">–</div><div class="stat-label">Completed</div></div></div>
+</div>
+
+<div class="panel mb-3">
+    <h2 class="h6 mb-3">Requests for you</h2>
+    <div id="incoming"><div class="skeleton mb-2"></div><div class="skeleton w-75"></div></div>
+</div>
+
+<div class="panel mb-3">
+    <h2 class="h6 mb-3">Requests you sent</h2>
+    <div id="outgoing"><div class="skeleton mb-2"></div><div class="skeleton w-50"></div></div>
+</div>
+
+<div class="panel">
+    <h2 class="h6 mb-3">Sessions</h2>
+    <div id="sessions"><div class="skeleton mb-2"></div><div class="skeleton w-75"></div></div>
+</div>
+
+<div class="modal fade" id="feedback-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Leave feedback</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="fb-session" />
+                <div class="mb-2">
+                    <label class="form-label" for="fb-rating">Rating</label>
+                    <select class="form-select" id="fb-rating">
+                        <option value="5">5 — Excellent</option>
+                        <option value="4">4 — Good</option>
+                        <option value="3">3 — Okay</option>
+                        <option value="2">2 — Poor</option>
+                        <option value="1">1 — Bad</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label" for="fb-comments">Comments</label>
+                    <textarea class="form-control" id="fb-comments" rows="3" maxlength="500"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-primary btn-sm" id="fb-submit">Submit</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+(function () {
+    'use strict';
+
+    var me = null;
+    var requests = [];
+    var sessions = [];
+
+    var statusBadge = {
+        Pending: 'bg-warning-subtle text-warning-emphasis border border-warning',
+        Accepted: 'bg-success-subtle text-success-emphasis border border-success',
+        Rejected: 'bg-secondary-subtle text-secondary-emphasis border border-secondary',
+        Scheduled: 'bg-primary-subtle text-primary-emphasis border border-primary',
+        Completed: 'bg-success-subtle text-success-emphasis border border-success',
+        Canceled: 'bg-secondary-subtle text-secondary-emphasis border border-secondary'
+    };
+
+    function badge(status) {
+        return '<span class="badge ' + (statusBadge[status] || 'bg-light text-dark border') + '">' +
+            escapeHtml(status) + '</span>';
+    }
+
+    function name(person) {
+        return escapeHtml(person && person.fullName ? person.fullName : 'Unnamed student');
+    }
+
+    function empty(text) {
+        return '<div class="empty"><span class="empty-icon">–</span>' + escapeHtml(text) + '</div>';
+    }
+
+    function renderIncoming() {
+        var items = requests.filter(function (r) {
+            return r.receiver.id === me && r.status === 'Pending';
+        });
+        var host = document.getElementById('incoming');
+
+        if (!items.length) {
+            host.innerHTML = empty('No one is waiting on you right now.');
+            return;
+        }
+
+        host.innerHTML = items.map(function (r) {
+            return '<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 py-2 border-bottom">' +
+                '<div><strong>' + name(r.sender) + '</strong> wants to learn ' +
+                '<strong>' + escapeHtml(r.skillName) + '</strong>' +
+                '<div class="small text-muted">' + escapeHtml(formatDate(r.createdAt)) + '</div></div>' +
+                '<div class="d-flex gap-2">' +
+                '<button class="btn btn-sm btn-primary" data-accept="' + r.id + '">Accept</button>' +
+                '<button class="btn btn-sm btn-outline-secondary" data-reject="' + r.id + '">Decline</button>' +
+                '</div></div>';
+        }).join('');
+    }
+
+    function renderOutgoing() {
+        var items = requests.filter(function (r) { return r.sender.id === me; });
+        var host = document.getElementById('outgoing');
+
+        if (!items.length) {
+            host.innerHTML = empty('You have not asked anyone yet. Try Find Peers.');
+            return;
+        }
+
+        host.innerHTML = items.map(function (r) {
+            return '<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 py-2 border-bottom">' +
+                '<div>You asked <strong>' + name(r.receiver) + '</strong> about ' +
+                '<strong>' + escapeHtml(r.skillName) + '</strong>' +
+                '<div class="small text-muted">' + escapeHtml(formatDate(r.createdAt)) + '</div></div>' +
+                badge(r.status) + '</div>';
+        }).join('');
+    }
+
+    function renderSessions() {
+        var host = document.getElementById('sessions');
+
+        if (!sessions.length) {
+            host.innerHTML = empty('No sessions yet. They appear once a request is accepted.');
+            return;
+        }
+
+        host.innerHTML = sessions.map(function (s) {
+            var other = s.learner.id === me ? s.mentor : s.learner;
+            var role = s.learner.id === me ? 'learning from' : 'teaching';
+            var actions = '';
+
+            if (s.status === 'Scheduled') {
+                actions =
+                    '<button class="btn btn-sm btn-outline-secondary" data-reschedule="' + s.id + '">Reschedule</button>' +
+                    '<button class="btn btn-sm btn-outline-secondary" data-link="' + s.id + '">Link</button>' +
+                    '<button class="btn btn-sm btn-primary" data-complete="' + s.id + '">Mark done</button>';
+            } else if (s.status === 'Completed') {
+                actions = '<button class="btn btn-sm btn-outline-primary" data-feedback="' + s.id + '">Feedback</button>';
+            }
+
+            var link = s.meetingLink
+                ? '<div class="small"><a href="' + escapeHtml(s.meetingLink) + '" target="_blank" rel="noopener">' +
+                  escapeHtml(s.meetingLink) + '</a></div>'
+                : '';
+
+            return '<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 py-2 border-bottom">' +
+                '<div><strong>' + escapeHtml(s.skillName) + '</strong> — ' + role + ' ' + name(other) +
+                '<div class="small text-muted">' + escapeHtml(formatDate(s.scheduledTime)) + '</div>' +
+                link + '</div>' +
+                '<div class="d-flex gap-2 align-items-center">' + badge(s.status) + actions + '</div></div>';
+        }).join('');
+    }
+
+    function renderStats() {
+        document.getElementById('stat-incoming').textContent =
+            requests.filter(function (r) { return r.receiver.id === me && r.status === 'Pending'; }).length;
+        document.getElementById('stat-sent').textContent =
+            requests.filter(function (r) { return r.sender.id === me; }).length;
+        document.getElementById('stat-upcoming').textContent =
+            sessions.filter(function (s) { return s.status === 'Scheduled'; }).length;
+        document.getElementById('stat-done').textContent =
+            sessions.filter(function (s) { return s.status === 'Completed'; }).length;
+    }
+
+    async function refresh() {
+        try {
+            var results = await Promise.all([
+                api('/api/Learning/requests'),
+                api('/api/Learning/sessions')
+            ]);
+            requests = results[0] || [];
+            sessions = results[1] || [];
+            renderIncoming();
+            renderOutgoing();
+            renderSessions();
+            renderStats();
+        } catch (e) {
+            toast(e.message, 'err');
+        }
+    }
+
+    async function setStatus(id, status) {
+        try {
+            await api('/api/Learning/requests/' + id + '/status', { method: 'PUT', body: { status: status } });
+            toast('Request ' + status.toLowerCase(), 'ok');
+            await refresh();
+        } catch (e) {
+            toast(e.message, 'err');
+        }
+    }
+
+    async function patchSession(id, body, note) {
+        try {
+            await api('/api/Learning/sessions/' + id, { method: 'PUT', body: body });
+            toast(note, 'ok');
+            await refresh();
+        } catch (e) {
+            toast(e.message, 'err');
+        }
+    }
+
+    document.addEventListener('click', function (e) {
+        var el = e.target.closest('button');
+        if (!el) { return; }
+
+        if (el.dataset.accept) { setStatus(el.dataset.accept, 'Accepted'); }
+        else if (el.dataset.reject) { setStatus(el.dataset.reject, 'Rejected'); }
+        else if (el.dataset.complete) { patchSession(el.dataset.complete, { status: 'Completed' }, 'Session completed'); }
+        else if (el.dataset.link) {
+            var url = prompt('Meeting link for this session:');
+            if (url) { patchSession(el.dataset.link, { meetingLink: url }, 'Link saved'); }
+        }
+        else if (el.dataset.reschedule) {
+            var session = sessions.filter(function (s) { return String(s.id) === el.dataset.reschedule; })[0];
+            var when = prompt('New date and time (YYYY-MM-DDTHH:MM):',
+                forDateTimeLocal(session ? session.scheduledTime : null));
+            if (when) { patchSession(el.dataset.reschedule, { scheduledTime: when }, 'Session rescheduled'); }
+        }
+        else if (el.dataset.feedback) {
+            document.getElementById('fb-session').value = el.dataset.feedback;
+            document.getElementById('fb-comments').value = '';
+            document.getElementById('fb-rating').value = '5';
+            new bootstrap.Modal(document.getElementById('feedback-modal')).show();
+        }
+    });
+
+    document.getElementById('fb-submit').addEventListener('click', async function () {
+        try {
+            await api('/api/Learning/feedback', {
+                method: 'POST',
+                body: {
+                    sessionId: parseInt(document.getElementById('fb-session').value, 10),
+                    rating: parseInt(document.getElementById('fb-rating').value, 10),
+                    comments: document.getElementById('fb-comments').value
+                }
+            });
+            bootstrap.Modal.getInstance(document.getElementById('feedback-modal')).hide();
+            toast('Thanks for the feedback', 'ok');
+            await refresh();
+        } catch (e) {
+            toast(e.message, 'err');
+        }
+    });
+
+    api('/api/profile').then(function (profile) {
+        me = profile.id;
+
+        if (!profile.fullName) {
+            var notice = document.createElement('div');
+            notice.className = 'alert alert-info';
+            notice.innerHTML = '<strong>Add your name.</strong> ' +
+                'Until you set a display name, other students see you as “Unnamed student”. ' +
+                '<a href="/Profile">Set it now</a>.';
+            document.getElementById('stats').before(notice);
+        }
+
+        return refresh();
+    }).catch(function (e) {
+        toast(e.message, 'err');
+    });
+})();
+</script>
+}

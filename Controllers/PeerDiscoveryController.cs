@@ -7,15 +7,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace AIstudentskillexchange.Controllers;
 
-/// <summary>
-/// Peer Discovery and Skill Matching Module.
-///
-/// Requirement Analysis mapping:
-///   §5  Student: "Search for other students."
-///   §11 "Peer discovery -> Search module"
-///   §6  Security: only authorised users may search, hence [Authorize]
-///   §6  Privacy: results expose only FullName, Bio and listed skills
-/// </summary>
 [Authorize]
 public class PeerDiscoveryController : Controller
 {
@@ -30,11 +21,6 @@ public class PeerDiscoveryController : Controller
         _userManager = userManager;
     }
 
-    // GET: /PeerDiscovery?query=python&skillId=3&sort=BestMatch&page=2
-    //
-    // Criteria are bound from the query string rather than posted, so every
-    // search is a shareable and bookmarkable URL and paging links are plain
-    // GET links.
     public async Task<IActionResult> Index(
         [FromQuery] PeerSearchCriteria criteria,
         CancellationToken cancellationToken)
@@ -49,7 +35,6 @@ public class PeerDiscoveryController : Controller
         return View(model);
     }
 
-    // GET: /PeerDiscovery/Profile/{id}
     public async Task<IActionResult> Profile(string id, CancellationToken cancellationToken)
     {
         var viewerId = _userManager.GetUserId(User);
@@ -67,9 +52,6 @@ public class PeerDiscoveryController : Controller
         return View(peer);
     }
 
-    // GET: /PeerDiscovery/Api?query=python&page=1
-    // JSON endpoint so a future dashboard widget or type-ahead box can reuse the
-    // same search without rendering the whole page.
     [HttpGet]
     public async Task<IActionResult> Api(
         [FromQuery] PeerSearchCriteria criteria,

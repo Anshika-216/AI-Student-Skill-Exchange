@@ -18,7 +18,6 @@ namespace AIstudentskillexchange.Data
         {
             base.OnModelCreating(builder);
 
-            // Configure complex relationships to avoid circular cascade delete conflicts
             builder.Entity<LearningRequest>()
                 .HasOne(lr => lr.Sender)
                 .WithMany(u => u.SentRequests)

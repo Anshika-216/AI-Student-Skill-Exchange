@@ -3,11 +3,6 @@ using AIstudentskillexchange.Models;
 
 namespace AIstudentskillexchange.DTOs
 {
-    // ---------- Requests in ----------
-    //
-    // SenderId / ReviewerId are deliberately absent: the acting user is taken
-    // from the auth cookie, so a caller cannot act as somebody else.
-
     public class CreateLearningRequestDto
     {
         [Required] public string ReceiverId { get; set; } = string.Empty;
@@ -32,13 +27,6 @@ namespace AIstudentskillexchange.DTOs
         [Required][Range(1, 5)] public int Rating { get; set; }
         [StringLength(500)] public string Comments { get; set; } = string.Empty;
     }
-
-    // ---------- Responses out ----------
-    //
-    // These exist for two reasons. Returning the EF entities serialised the
-    // Sender/Receiver/Reviewer navigations, which are IdentityUser and carry
-    // PasswordHash and SecurityStamp. They also formed a Request <-> Session
-    // reference cycle that System.Text.Json rejects at runtime.
 
     public class PersonDto
     {

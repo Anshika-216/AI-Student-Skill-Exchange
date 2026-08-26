@@ -3,18 +3,6 @@ using AIstudentskillexchange.Models;
 
 namespace AIstudentskillexchange.Data
 {
-    /// <summary>
-    /// Seeds the shared skill catalogue.
-    ///
-    /// Every module in the app keys off the Skills table: peer search filters by
-    /// it, the recommendation scorer matches on it, and a learning request needs
-    /// a SkillId. With an empty table each of those returns nothing, so a fresh
-    /// clone of the repo looks broken. This gives the app something to work with
-    /// on first run.
-    ///
-    /// Only ever inserts skills that are missing, so it is safe to run on every
-    /// startup and will not disturb rows added later.
-    /// </summary>
     public static class SkillCatalogueSeeder
     {
         private static readonly (string Name, string Category)[] DefaultSkills =

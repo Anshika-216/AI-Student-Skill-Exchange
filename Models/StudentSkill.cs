@@ -32,9 +32,9 @@ namespace AIstudentskillexchange.Models
         public Skill? Skill { get; set; }
 
         [Required]
-        public SkillType Type { get; set; } // Defines if they want to teach or learn it
+        public SkillType Type { get; set; }
 
         [Required]
-        public ProficiencyLevel Level { get; set; } // Beginner, Intermediate, Expert
+        public ProficiencyLevel Level { get; set; }
     }
 }

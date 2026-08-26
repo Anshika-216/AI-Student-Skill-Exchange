@@ -8,16 +8,6 @@ using AIstudentskillexchange.Models;
 
 namespace AIstudentskillexchange.Controllers
 {
-    /// <summary>
-    /// Learning Session and Feedback module: requests -> sessions -> feedback.
-    ///
-    /// Security model: the caller must be signed in, the acting user always comes
-    /// from the auth cookie, and every endpoint checks that the caller is actually
-    /// a party to the request or session it touches.
-    ///
-    /// Convention (shared with the recommendation module): the Sender is the
-    /// learner asking for help, the Receiver is the mentor who will teach.
-    /// </summary>
     [Authorize]
     [ApiController]
     [Route("api/[controller]")]
@@ -72,11 +62,6 @@ namespace AIstudentskillexchange.Controllers
             CreatedAt = f.CreatedAt
         };
 
-        // ---------- Learning Requests ----------
-
-        // GET: api/Learning/requests
-        // Everything the signed-in user has sent or received. The old route took
-        // a userId from the URL, which let anyone read another student inbox.
         [HttpGet("requests")]
         public async Task<IActionResult> GetMyRequests(CancellationToken cancellationToken)
         {
@@ -93,7 +78,6 @@ namespace AIstudentskillexchange.Controllers
             return Ok(requests.Select(ToDto));
         }
 
-        // POST: api/Learning/requests
         [HttpPost("requests")]
         public async Task<IActionResult> CreateRequest(
             CreateLearningRequestDto dto, CancellationToken cancellationToken)
@@ -112,8 +96,6 @@ namespace AIstudentskillexchange.Controllers
             if (skill == null)
                 return NotFound(new { message = "Skill not found." });
 
-            // The recommendation module surfaces HasOpenRequest from exactly this
-            // condition, so keep a single live request per mentor/skill pair.
             var duplicate = await _context.LearningRequests.AnyAsync(
                 r => r.SenderId == senderId
                      && r.ReceiverId == dto.ReceiverId
@@ -135,14 +117,21 @@ namespace AIstudentskillexchange.Controllers
             _context.LearningRequests.Add(request);
             await _context.SaveChangesAsync(cancellationToken);
 
-            request.Skill = skill;
-            request.Receiver = receiver;
-            request.Sender = await _userManager.GetUserAsync(User);
+            var sender = await _userManager.GetUserAsync(User);
 
-            return Ok(ToDto(request));
+            return Ok(new LearningRequestDto
+            {
+                Id = request.Id,
+                Sender = ToPerson(senderId, sender),
+                Receiver = ToPerson(receiver.Id, receiver),
+                SkillId = skill.Id,
+                SkillName = skill.Name,
+                Status = request.Status,
+                CreatedAt = request.CreatedAt,
+                SessionId = null
+            });
         }
 
-        // PUT: api/Learning/requests/{id}/status
         [HttpPut("requests/{id}/status")]
         public async Task<IActionResult> UpdateRequestStatus(
             int id, UpdateRequestStatusDto dto, CancellationToken cancellationToken)
@@ -157,7 +146,6 @@ namespace AIstudentskillexchange.Controllers
             if (request == null)
                 return NotFound(new { message = "Request not found." });
 
-            // Only the mentor being asked may accept or reject.
             if (request.ReceiverId != userId)
                 return Forbid();
 
@@ -186,9 +174,6 @@ namespace AIstudentskillexchange.Controllers
             return Ok(ToDto(request));
         }
 
-        // ---------- Learning Sessions ----------
-
-        // GET: api/Learning/sessions
         [HttpGet("sessions")]
         public async Task<IActionResult> GetMySessions(CancellationToken cancellationToken)
         {
@@ -206,7 +191,6 @@ namespace AIstudentskillexchange.Controllers
             return Ok(sessions.Select(ToDto));
         }
 
-        // PUT: api/Learning/sessions/{id}
         [HttpPut("sessions/{id}")]
         public async Task<IActionResult> UpdateSession(
             int id, UpdateSessionDto dto, CancellationToken cancellationToken)
@@ -245,9 +229,6 @@ namespace AIstudentskillexchange.Controllers
             return Ok(ToDto(session));
         }
 
-        // ---------- Feedback ----------
-
-        // GET: api/Learning/feedback/session/{sessionId}
         [HttpGet("feedback/session/{sessionId}")]
         public async Task<IActionResult> GetFeedbackForSession(
             int sessionId, CancellationToken cancellationToken)
@@ -275,7 +256,6 @@ namespace AIstudentskillexchange.Controllers
             return Ok(feedback.Select(ToDto));
         }
 
-        // POST: api/Learning/feedback
         [HttpPost("feedback")]
         public async Task<IActionResult> AddFeedback(
             CreateFeedbackDto dto, CancellationToken cancellationToken)
@@ -295,8 +275,6 @@ namespace AIstudentskillexchange.Controllers
             if (!isParticipant)
                 return Forbid();
 
-            // Ratings feed the reputation signal in the recommendation score, so
-            // only a session that actually happened may be rated.
             if (session.Status != SessionStatus.Completed)
                 return BadRequest(new { message = "Feedback can only be left on a completed session." });
 
@@ -315,9 +293,17 @@ namespace AIstudentskillexchange.Controllers
             _context.Feedbacks.Add(feedback);
             await _context.SaveChangesAsync(cancellationToken);
 
-            feedback.Reviewer = await _userManager.GetUserAsync(User);
+            var reviewer = await _userManager.GetUserAsync(User);
 
-            return Ok(ToDto(feedback));
+            return Ok(new FeedbackDto
+            {
+                Id = feedback.Id,
+                SessionId = feedback.SessionId,
+                Reviewer = ToPerson(reviewerId, reviewer),
+                Rating = feedback.Rating,
+                Comments = feedback.Comments,
+                CreatedAt = feedback.CreatedAt
+            });
         }
     }
 }

@@ -4,7 +4,6 @@
 @{
     ViewData["Title"] = "Find Peers";
 
-    // Carries the current filters onto paging links.
     Dictionary<string, string?> PageLink(int page) => new()
     {
         ["query"] = Model.Criteria.Query,
@@ -30,12 +29,12 @@
 {
     <div class="alert alert-info">
         <strong>Your profile is empty.</strong>
-        You can still search, but adding the skills you can teach and the ones you want to learn
+        You can still search, but <a asp-controller="Profile" asp-action="Index">adding your skills</a>
         lets us show how well each student matches you.
     </div>
 }
 
-<form method="get" class="card card-body bg-light border-0 mb-4">
+<form method="get" class="card card-body filter-bar mb-4">
     <div class="row g-2">
         <div class="col-12 col-lg-4">
             <label class="form-label mb-1" for="query">Search</label>
@@ -249,6 +248,19 @@ else
                         <div class="small text-muted mt-2">
                             Teaches @peer.TotalSkillsTaught &middot; Learning @peer.TotalGoals
                         </div>
+
+                        @if (peer.TeachesWhatIWant.Any())
+                        {
+                            <div class="d-flex flex-wrap gap-1 mt-3">
+                                @foreach (var skill in peer.TeachesWhatIWant)
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-primary"
+                                            data-peer="@peer.StudentId" data-skill="@skill.SkillId">
+                                        Ask about @skill.SkillName
+                                    </button>
+                                }
+                            </div>
+                        }
                     </div>
                 </div>
             </div>
@@ -271,4 +283,31 @@ else
             </ul>
         </nav>
     }
+}
+
+@section Scripts {
+<script>
+document.addEventListener('click', async function (e) {
+    var button = e.target.closest('button[data-peer][data-skill]');
+    if (!button) { return; }
+
+    button.disabled = true;
+    try {
+        await api('/api/Learning/requests', {
+            method: 'POST',
+            body: {
+                receiverId: button.dataset.peer,
+                skillId: parseInt(button.dataset.skill, 10)
+            }
+        });
+        button.textContent = 'Request sent';
+        button.classList.remove('btn-outline-primary');
+        button.classList.add('btn-success');
+        toast('Request sent', 'ok');
+    } catch (err) {
+        button.disabled = false;
+        toast(err.message, 'err');
+    }
+});
+</script>
 }

@@ -7,14 +7,12 @@ using AIstudentskillexchange.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. Configure the SQL Server Connection String
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(connectionString));
 
-// 2. Configure ASP.NET Core Identity for Authentication
 builder.Services.AddDefaultIdentity<ApplicationUser>(options => {
     options.Password.RequireDigit = true;
     options.Password.RequireLowercase = true;
@@ -24,25 +22,17 @@ builder.Services.AddDefaultIdentity<ApplicationUser>(options => {
 })
 .AddEntityFrameworkStores<ApplicationDbContext>();
 
-// AI Recommendation Module (peer recommendations + AI skill analysis)
 builder.Services.AddAiRecommendationModule(builder.Configuration);
 
-// 3. Add MVC Controller and View support.
-//    Enums are exchanged as their names ("ToLearn", "Pending") rather than as
-//    raw integers, so the API is readable and callers cannot silently depend on
-//    the declaration order of an enum.
 builder.Services.AddControllersWithViews()
     .AddJsonOptions(options =>
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
-builder.Services.AddRazorPages(); 
+builder.Services.AddRazorPages();
 
-// Peer Discovery and Skill Matching Module (student search + skill matching)
 builder.Services.AddPeerDiscoveryModule(builder.Configuration);
 
 var app = builder.Build();
 
-// 4. Apply any pending migrations and seed the shared skill catalogue, so a
-//    fresh clone has a working database on first run.
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -50,7 +40,6 @@ using (var scope = app.Services.CreateScope())
     await SkillCatalogueSeeder.SeedAsync(context);
 }
 
-// 5. Configure the HTTP request pipeline (Middleware)
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
@@ -65,11 +54,10 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// 6. Define standard MVC routing paths
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
 
-app.MapRazorPages(); 
+app.MapRazorPages();
 
 app.Run();

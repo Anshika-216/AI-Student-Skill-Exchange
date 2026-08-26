@@ -35,7 +35,6 @@ namespace AIstudentskillexchange.Models
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-        // If accepted, maps directly to the created learning session
         public LearningSession? Session { get; set; }
     }
 }

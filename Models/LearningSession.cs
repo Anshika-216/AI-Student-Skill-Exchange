@@ -26,7 +26,7 @@ namespace AIstudentskillexchange.Models
         [Required]
         public SessionStatus Status { get; set; } = SessionStatus.Scheduled;
 
-        public string? MeetingLink { get; set; } // Optional online classroom details
+        public string? MeetingLink { get; set; }
 
         public ICollection<Feedback> Feedbacks { get; set; } = new List<Feedback>();
     }

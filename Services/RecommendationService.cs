@@ -7,26 +7,6 @@ using Microsoft.Extensions.Options;
 
 namespace AIstudentskillexchange.Services
 {
-    /// <summary>
-    /// AI Recommendation Module - peer ranking stage.
-    ///
-    /// Data flow (Requirement Analysis section 10):
-    ///   1. Load the learner profile: goals (ToLearn) and offerings (ToTeach),
-    ///      with the skill name, category and proficiency level of each.
-    ///   2. AI Skill Analysis: hand that profile plus the skill catalogue to
-    ///      <see cref="ISkillAnalysisService"/>, which returns related/similar
-    ///      skills and an optional learning path.
-    ///   3. Candidate discovery: find every other student who teaches either a
-    ///      goal skill (direct) or an AI-identified related skill.
-    ///   4. Enrichment: attach reputation (feedback ratings, completed sessions)
-    ///      and relationship state (already-open learning requests).
-    ///   5. Scoring: blend six weighted signals into a 0-100 match score.
-    ///   6. Ranking and explanation: sort, cut to the page size, and ask the AI
-    ///      Service to write a one-line explanation for the top matches.
-    ///
-    /// Convention: in a <see cref="LearningRequest"/> the Sender is the learner
-    /// asking for help and the Receiver is the mentor who will teach.
-    /// </summary>
     public class RecommendationService : IRecommendationService
     {
         private readonly ApplicationDbContext _context;
@@ -46,10 +26,6 @@ namespace AIstudentskillexchange.Services
             _logger = logger;
         }
 
-        // =========================================================================
-        // Public entry points
-        // =========================================================================
-
         public async Task<RecommendationsViewModel> GetRecommendationsAsync(
             string learnerId,
             int? skillId = null,
@@ -64,14 +40,12 @@ namespace AIstudentskillexchange.Services
 
             model.LearnerWishlist = profile.FullWishlistSkills;
 
-            // Acceptance Criteria item 2: at least one learning goal is required.
             if (profile.Wishlist.Count == 0)
             {
                 model.SuggestedSkills = await GetSuggestedSkillsAsync(learnerId, cancellationToken: cancellationToken);
                 return model;
             }
 
-            // Stage: AI Skill Analysis.
             var analysis = await RunAnalysisAsync(profile, cancellationToken);
 
             model.AnalysisFromLlm = analysis.FromLlm;
@@ -79,7 +53,6 @@ namespace AIstudentskillexchange.Services
             model.Keywords = analysis.Keywords;
             model.LearningPath = analysis.LearningPath;
 
-            // Stage: AI Peer Recommendations.
             var recommendations = await RankMentorsAsync(profile, analysis, null, cancellationToken);
 
             await AttachAiExplanationsAsync(recommendations, cancellationToken);
@@ -153,23 +126,16 @@ namespace AIstudentskillexchange.Services
                 .ToList();
         }
 
-        // =========================================================================
-        // Stage 1 - learner profile
-        // =========================================================================
-
         private sealed class LearnerProfile
         {
             public string LearnerId { get; init; } = string.Empty;
 
-            /// <summary>Goals in scope for this run (after any skill filter).</summary>
             public List<StudentSkill> Wishlist { get; init; } = new();
 
-            /// <summary>Every goal skill, used to populate the filter dropdown.</summary>
             public List<Skill> FullWishlistSkills { get; init; } = new();
 
             public List<StudentSkill> Teachables { get; init; } = new();
 
-            /// <summary>Goal skill id to the learner current level for it.</summary>
             public Dictionary<int, ProficiencyLevel> WishlistLevels { get; init; } = new();
 
             public Dictionary<int, string> WishlistNames { get; init; } = new();
@@ -197,7 +163,6 @@ namespace AIstudentskillexchange.Services
                 .OrderBy(s => s.Name)
                 .ToList();
 
-            // Ignore a filter for a skill the learner does not actually have.
             if (skillId.HasValue && fullWishlistSkills.All(s => s.Id != skillId.Value))
                 skillId = null;
 
@@ -223,10 +188,6 @@ namespace AIstudentskillexchange.Services
             };
         }
 
-        // =========================================================================
-        // Stage 2 - AI skill analysis
-        // =========================================================================
-
         private async Task<SkillAnalysisResult> RunAnalysisAsync(
             LearnerProfile profile,
             CancellationToken cancellationToken)
@@ -239,9 +200,6 @@ namespace AIstudentskillexchange.Services
                     SkillId = s.Id,
                     Name = s.Name,
                     Category = s.Category
-                    // Description is left unset: the Skill entity has no description
-                    // column yet. See docs/AI-Recommendation-Module-Plan.md section 5.4
-                    // for the proposed schema addition, which is owned by the entity author.
                 })
                 .ToListAsync(cancellationToken);
 
@@ -256,16 +214,6 @@ namespace AIstudentskillexchange.Services
             return await _skillAnalysis.AnalyseAsync(request, cancellationToken);
         }
 
-        /// <summary>
-        /// Maps a stored skill into the AI analysis input.
-        ///
-        /// Description is deliberately left unset. The requirement "analyse
-        /// student-provided skill descriptions" needs a free-text column on
-        /// StudentSkill that the current schema does not have, and that entity is
-        /// owned by another team member. Until it is added, the analyser works
-        /// from skill name, category and proficiency level, which already exist.
-        /// The property is kept on the DTO so the upgrade is a one-line change.
-        /// </summary>
         private static AnalysedSkillInput ToAnalysisInput(StudentSkill skill) => new()
         {
             SkillId = skill.SkillId,
@@ -274,11 +222,6 @@ namespace AIstudentskillexchange.Services
             Level = skill.Level.ToString()
         };
 
-        // =========================================================================
-        // Stages 3-6 - candidates, enrichment, scoring, ranking
-        // =========================================================================
-
-        /// <summary>A related skill plus which learning goal it was matched against.</summary>
         private sealed record RelatedLink(RelatedSkill Related, int GoalSkillId, string GoalSkillName);
 
         private async Task<List<MentorRecommendationViewModel>> RankMentorsAsync(
@@ -289,7 +232,6 @@ namespace AIstudentskillexchange.Services
         {
             var goalIds = profile.WishlistLevels.Keys.ToHashSet();
 
-            // Best related link per skill id, above the configured similarity floor.
             var relatedLinks = new Dictionary<int, RelatedLink>();
             foreach (var (goalSkillId, matches) in analysis.RelatedSkills)
             {
@@ -303,7 +245,7 @@ namespace AIstudentskillexchange.Services
                     if (match.Similarity < _options.MinimumRelatedSimilarity)
                         continue;
                     if (goalIds.Contains(match.SkillId))
-                        continue; // a direct goal always beats a related match
+                        continue;
 
                     if (!relatedLinks.TryGetValue(match.SkillId, out var existing)
                         || match.Similarity > existing.Related.Similarity)
@@ -315,7 +257,6 @@ namespace AIstudentskillexchange.Services
 
             var searchIds = goalIds.Concat(relatedLinks.Keys).Distinct().ToList();
 
-            // Stage 3: candidate discovery.
             var candidateSkills = await _context.StudentSkills
                 .AsNoTracking()
                 .Include(ss => ss.Skill)
@@ -330,7 +271,6 @@ namespace AIstudentskillexchange.Services
 
             var mentorIds = candidateSkills.Select(ss => ss.StudentId).Distinct().ToList();
 
-            // Stage 4: enrichment.
             var mentorWants = await _context.StudentSkills
                 .AsNoTracking()
                 .Include(ss => ss.Skill)
@@ -351,7 +291,6 @@ namespace AIstudentskillexchange.Services
                 .ToListAsync(cancellationToken))
                 .ToHashSet();
 
-            // Ratings a mentor earned as the teaching side of a session.
             var feedbackRows = await _context.Feedbacks
                 .AsNoTracking()
                 .Where(f => f.Session != null
@@ -379,7 +318,6 @@ namespace AIstudentskillexchange.Services
                 .GroupBy(id => id)
                 .ToDictionary(g => g.Key, g => g.Count());
 
-            // Stage 5: scoring.
             var results = new List<MentorRecommendationViewModel>();
 
             foreach (var group in candidateSkills.GroupBy(ss => ss.StudentId))
@@ -407,7 +345,6 @@ namespace AIstudentskillexchange.Services
                     results.Add(recommendation);
             }
 
-            // Stage 6: ranking.
             var take = maxResults ?? _options.MaxResults;
 
             _logger.LogInformation(
@@ -453,7 +390,6 @@ namespace AIstudentskillexchange.Services
 
                 if (profile.WishlistLevels.TryGetValue(teach.SkillId, out var learnerLevel))
                 {
-                    // Direct match: exactly a skill the learner asked for.
                     model.DirectMatches.Add(new MatchedSkillViewModel
                     {
                         SkillId = teach.SkillId,
@@ -467,7 +403,6 @@ namespace AIstudentskillexchange.Services
                 }
                 else if (relatedLinks.TryGetValue(teach.SkillId, out var link))
                 {
-                    // Related match: surfaced by the AI Skill Analysis stage.
                     model.RelatedMatches.Add(new MatchedSkillViewModel
                     {
                         SkillId = teach.SkillId,
@@ -486,19 +421,15 @@ namespace AIstudentskillexchange.Services
 
             var goalCount = Math.Max(1, profile.WishlistLevels.Count);
 
-            // Signal 1 - exact wish-list coverage.
             var skillMatch = Math.Min(1.0, (double)model.DirectMatches.Count / goalCount);
 
-            // Signal 2 - AI-identified related coverage, discounted by similarity.
             var relatedMatch = Math.Min(1.0, model.RelatedMatches.Sum(m => m.Similarity) / goalCount);
 
-            // Signal 3 - proficiency headroom, from direct matches where possible.
             var levelSource = model.DirectMatches.Count > 0 ? model.DirectMatches : model.RelatedMatches;
             var proficiency = levelSource.Count == 0
                 ? 0
                 : levelSource.Average(m => ScoreLevelGap(m.LevelGap));
 
-            // Signal 4 - reciprocity (a genuine two-way exchange).
             model.ReciprocalSkills = mentorWants
                 .Where(ss => profile.TeachableIds.Contains(ss.SkillId))
                 .Select(ss => ss.Skill?.Name ?? $"Skill #{ss.SkillId}")
@@ -512,12 +443,10 @@ namespace AIstudentskillexchange.Services
                 _ => 1.0
             };
 
-            // Signal 5 - reputation.
             var ratingScore = rating.HasValue
                 ? Math.Clamp(rating.Value.Average / 5.0, 0, 1)
                 : _options.NewMentorRatingBaseline;
 
-            // Signal 6 - track record.
             var saturation = Math.Max(1, _options.ExperienceSaturationSessions);
             var experience = Math.Min(1.0, (double)completedSessions / saturation);
 
@@ -559,10 +488,6 @@ namespace AIstudentskillexchange.Services
             return model;
         }
 
-        /// <summary>
-        /// Rewards a mentor who sits above the learner, and heavily discounts one
-        /// who is below them for that skill.
-        /// </summary>
         private static double ScoreLevelGap(int gap) => gap switch
         {
             >= 2 => 1.00,
@@ -571,11 +496,6 @@ namespace AIstudentskillexchange.Services
             _ => 0.15
         };
 
-        /// <summary>
-        /// Acceptance Criteria item 6: every recommendation carries a reason.
-        /// These are generated deterministically, so they exist even when the
-        /// LLM explanation call is disabled or unavailable.
-        /// </summary>
         private static List<string> BuildReasons(MentorRecommendationViewModel model)
         {
             var reasons = new List<string>();
@@ -628,10 +548,6 @@ namespace AIstudentskillexchange.Services
             return reasons;
         }
 
-        /// <summary>
-        /// Asks the AI Service for a friendly one-liner per top match. Purely
-        /// additive: if it returns nothing, the rule-based reasons still stand.
-        /// </summary>
         private async Task AttachAiExplanationsAsync(
             List<MentorRecommendationViewModel> recommendations,
             CancellationToken cancellationToken)

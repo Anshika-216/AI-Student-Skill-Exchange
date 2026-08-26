@@ -5,13 +5,6 @@ using Microsoft.Extensions.Options;
 
 namespace AIstudentskillexchange.Services.AI
 {
-    /// <summary>
-    /// Thin wrapper over the Gemini generateContent REST endpoint.
-    ///
-    /// Uses the Google AI Studio free tier. The model is asked to reply with
-    /// JSON only (responseMimeType = application/json) so the result can be
-    /// deserialised straight into our own types.
-    /// </summary>
     public class GeminiClient
     {
         private readonly HttpClient _http;
@@ -32,10 +25,6 @@ namespace AIstudentskillexchange.Services.AI
 
         public bool IsConfigured => _options.IsConfigured;
 
-        /// <summary>
-        /// Sends a prompt and returns the raw JSON text the model produced,
-        /// or null if the call failed for any reason.
-        /// </summary>
         public async Task<string?> GenerateJsonAsync(
             string systemInstruction,
             string prompt,
@@ -109,9 +98,6 @@ namespace AIstudentskillexchange.Services.AI
             }
         }
 
-        /// <summary>
-        /// Digs the generated text out of the generateContent response envelope.
-        /// </summary>
         private static string? ExtractText(string responseBody)
         {
             using var document = JsonDocument.Parse(responseBody);
@@ -140,9 +126,6 @@ namespace AIstudentskillexchange.Services.AI
             return string.IsNullOrWhiteSpace(result) ? null : result;
         }
 
-        /// <summary>
-        /// Deserialises a model reply, tolerating a stray markdown code fence.
-        /// </summary>
         public static T? ParseJson<T>(string? raw, ILogger logger) where T : class
         {
             if (string.IsNullOrWhiteSpace(raw))

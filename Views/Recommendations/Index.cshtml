@@ -28,8 +28,9 @@
 {
     <div class="alert alert-info">
         <strong>Add a learning goal first.</strong>
-        You have not listed any skills you want to learn yet. Add at least one, with a short
-        description of what you are after, and we will match you with peers who can teach it.
+        You have not listed any skills you want to learn yet.
+        <a asp-controller="Profile" asp-action="Index">Add a learning goal</a> and we will match you
+        with peers who can teach it.
     </div>
 }
 else
@@ -161,10 +162,24 @@ else
                                 </div>
                             </details>
 
-                            <button type="button" class="btn btn-outline-primary btn-sm" disabled>
-                                Send learning request
-                            </button>
-                            <span class="small text-muted ms-1">(request module pending)</span>
+                            @if (rec.HasOpenRequest)
+                            {
+                                <button type="button" class="btn btn-outline-secondary btn-sm" disabled>
+                                    Request already sent
+                                </button>
+                            }
+                            else if (rec.DirectMatches.Any())
+                            {
+                                <div class="d-flex flex-wrap gap-1">
+                                    @foreach (var skill in rec.DirectMatches)
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-primary"
+                                                data-peer="@rec.MentorId" data-skill="@skill.SkillId">
+                                            Ask about @skill.SkillName
+                                        </button>
+                                    }
+                                </div>
+                            }
                         </div>
                     </div>
                 </div>
@@ -209,4 +224,31 @@ else
             </div>
         }
     </div>
+}
+
+@section Scripts {
+<script>
+document.addEventListener('click', async function (e) {
+    var button = e.target.closest('button[data-peer][data-skill]');
+    if (!button) { return; }
+
+    button.disabled = true;
+    try {
+        await api('/api/Learning/requests', {
+            method: 'POST',
+            body: {
+                receiverId: button.dataset.peer,
+                skillId: parseInt(button.dataset.skill, 10)
+            }
+        });
+        button.textContent = 'Request sent';
+        button.classList.remove('btn-outline-primary');
+        button.classList.add('btn-success');
+        toast('Request sent', 'ok');
+    } catch (err) {
+        button.disabled = false;
+        toast(err.message, 'err');
+    }
+});
+</script>
 }
