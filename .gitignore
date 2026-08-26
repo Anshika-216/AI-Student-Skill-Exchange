@@ -1,0 +1,17 @@
+# Build results
+bin/
+obj/
+
+# Visual Studio cache/options
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Local database files
+*.sqlite
+*.mdf
+*.ldf
+
+.
