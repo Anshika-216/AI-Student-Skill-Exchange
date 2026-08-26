@@ -14,4 +14,5 @@ obj/
 *.mdf
 *.ldf
 
-.
+# User secrets / local config
+appsettings.*.local.json
